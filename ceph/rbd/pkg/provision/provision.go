@@ -79,6 +79,9 @@ type rbdProvisionOptions struct {
 	// imageFormat to "2". Currently supported features are layering only.
 	// Default is "", and no features are turned on.
 	imageFeatures []string
+	// A parameter to prefix the names of the image in rbd when multiple kubernetes clusters
+	// create volume in the same pool.
+	storagePrefix string
 }
 
 type rbdProvisioner struct {
@@ -125,7 +128,7 @@ func (p *rbdProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	// create random image name
 	uuid := fmt.Sprintf("%s", uuid.NewUUID())
 	suuid := uuid[:strings.IndexByte(uuid, '-')]
-	image := fmt.Sprintf("%s-%s-%s", options.PVC.Namespace, options.PVC.Name, suuid)
+	image := fmt.Sprintf("%s-%s-%s-%s", opts.storagePrefix, options.PVC.Namespace, options.PVC.Name, suuid)
 	rbd, sizeMB, err := p.rbdUtil.CreateImage(image, opts, options)
 	if err != nil {
 		glog.Errorf("rbd: create volume failed, err: %v", err)
@@ -265,6 +268,7 @@ func (p *rbdProvisioner) parseParameters(parameters map[string]string) (*rbdProv
 		pool:        "rbd",
 		adminID:     "admin",
 		imageFormat: rbdImageFormat1,
+		storagePrefix:  "rbddefault",
 	}
 
 	var (
@@ -321,6 +325,13 @@ func (p *rbdProvisioner) parseParameters(parameters map[string]string) (*rbdProv
 				v = "rbd"
 			}
 			opts.pool = v
+		case "storageprefix":
+			if v == "" {
+				// keep consistent behavior with in-tree rbd provisioner, which use default value if user provides empty string
+				// TODO: treat empty string invalid value?
+				v = "rbddefault"
+			}
+			opts.storagePrefix = v
 		case "usersecretname":
 			if v == "" {
 				return nil, fmt.Errorf("missing user secret name")
